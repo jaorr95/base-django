@@ -1,0 +1,66 @@
+stages:
+  - test
+  - deploy
+
+.deploy: &deploy_to_heroku
+  stage: deploy
+  image: ruby:latest
+  allow_failure: false
+  before_script:
+   - gem install dpl
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /.*\[SKIP_DEPLOY\].*/i
+
+.test: &run_tests
+  stage: test
+  image: python:3.8
+  allow_failure: false
+  environment: test
+  before_script:
+    - echo "Executing tests"
+    - pip install -r requirements.txt
+  script:
+    - coverage run --source='api.v1' manage.py test --settings=api.settings.test api.v1
+    - coverage report | tail -n 1 | awk '{if  ($4+0 < ENVIRON["MINIMUN_COVERAGE_TEST"])  {print "Cobertura por debajo del minimo requerido. El minimo es "ENVIRON["MINIMUN_COVERAGE_TEST"]; exit(1);} else print "Pruebas superadas con exito.";}'
+  except:
+    - $CI_COMMIT_MESSAGE =~ /.*\[SKIP_TEST\].*/i
+  
+
+test on merge request:
+  <<: *run_tests
+  only: [merge_requests]
+  except:
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != "development" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != "master"
+      - $CI_COMMIT_MESSAGE =~ /.*\[SKIP_TEST\].*/i
+
+test on deploy:
+  <<: *run_tests
+  after_script:
+    - bash <(curl -s https://codecov.io/bash) -v || echo 'Codecov failed to upload'
+  only:
+    refs:
+      - development
+      - master
+
+heroku dev:
+  <<: *deploy_to_heroku
+  environment: development
+  script:
+    - dpl --provider=heroku --app=$HEROKU_APP --api-key=$HEROKU_API_KEY
+  only:
+    refs:
+      - development
+  
+
+heroku prod:
+  <<: *deploy_to_heroku
+  environment: production
+  script:
+    - dpl --provider=heroku --app=$HEROKU_APP --api-key=$HEROKU_API_KEY
+  only:
+    - tags
+  except:
+    - branches
+  when: manual

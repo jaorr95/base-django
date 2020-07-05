@@ -1,0 +1,45 @@
+version: '3.1'
+
+services:
+  postgres:
+    image: postgres
+    volumes:
+      - ../data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 12345
+      POSTGRES_DB: django
+    networks:
+      - django-api
+
+  pgadmin4:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: 12345
+    depends_on:
+      - postgres
+    ports:
+      - "8080:80"
+    networks:
+      - django-api
+
+  api:
+    build: .
+    image: python:3.8-django
+    volumes:
+      - .:/usr/src/app
+    environment:
+      PROJECT_NAME: PROJECT_NAME
+    depends_on:
+      - postgres
+    ports:
+      - "8000:80"
+    networks:
+      - django-api
+
+networks:
+  django-api:
+    driver: bridge
+
+  
